@@ -22,6 +22,7 @@ services:
       ISUCONP_MEMCACHED_ADDRESS: memcached:11211
     links:
       - mysql
+      - pgsql
       - memcached
     volumes:
       - ./public:/home/public
@@ -49,6 +50,27 @@ services:
         limits:
           cpus: '1'
           memory: 1g
+
+  pgsql:
+    image: postgres:15
+    environment:
+      - "TZ=Asia/Tokyo"
+      - "POSTGRES_USER=isucon"
+      - "POSTGRES_PASSWORD=isucon"
+      - "POSTGRES_DB=isuconp"
+      - "POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C"
+    volumes:
+      - ./logs/pgsql:/var/log/pgsql
+      #- ./sql:/docker-entrypoint-initdb.d
+      #- ./etc/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
+    ports:
+      - "15432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1g
+    command: ["postgres", "-c", "logging_collector=on", "-c", "log_directory=/var/log/pgsql"]
 
   memcached:
     image: memcached:1.6
