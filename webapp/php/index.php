@@ -355,13 +355,17 @@ $app->post('/', function (Request $request, Response $response) {
 
     if ($_FILES['file']) {
         $mime = '';
+        $ext = '';
         // 投稿のContent-Typeからファイルのタイプを決定する
         if (strpos($_FILES['file']['type'], 'jpeg') !== false) {
             $mime = 'image/jpeg';
+            $ext = 'jpg';
         } elseif (strpos($_FILES['file']['type'], 'png') !== false) {
             $mime = 'image/png';
+            $ext = 'png';
         } elseif (strpos($_FILES['file']['type'], 'gif') !== false) {
             $mime = 'image/gif';
+            $ext = 'gif';
         } else {
             $this->get('flash')->addMessage('notice', '投稿できる画像形式はjpgとpngとgifだけです');
             return redirect($response, '/', 302);
@@ -378,10 +382,17 @@ $app->post('/', function (Request $request, Response $response) {
         $ps->execute([
           $me['id'],
           $mime,
-          file_get_contents($_FILES['file']['tmp_name']),
+          //file_get_contents($_FILES['file']['tmp_name']),
+          "",
           $params['body'],
         ]);
+        
         $pid = $db->lastInsertId();
+
+        $imgdata = file_get_contents($_FILES['file']['tmp_name']);
+        $filename = "/home/public/image/{$pid}.{$ext}";
+        file_put_contents($filename, $imgdata);
+
         return redirect($response, "/posts/{$pid}", 302);
     } else {
         $this->get('flash')->addMessage('notice', '画像が必須です');
@@ -400,6 +411,11 @@ $app->get('/image/{id}.{ext}', function (Request $request, Response $response, $
         ($args['ext'] == 'png' && $post['mime'] == 'image/png') ||
         ($args['ext'] == 'gif' && $post['mime'] == 'image/gif')) {
         $response->getBody()->write($post['imgdata']);
+
+        // 取得されたタイミングでファイルに書き出す
+        $filename = "/home/public/image/{$args['id']}.{$args['ext']}";
+        file_put_contents($filename, $post['imgdata']);
+
         return $response->withHeader('Content-Type', $post['mime']);
     }
     $response->getBody()->write('404');
