@@ -1,5 +1,11 @@
 FROM php:8.2-fpm-bullseye
 
+# pm.max_childrenを変更する
+RUN sed -i 's/pm.max_children = .*/pm.max_children = 40/' /usr/local/etc/php-fpm.d/www.conf
+RUN sed -i 's/pm.start_servers = .*/pm.start_servers = 20/' /usr/local/etc/php-fpm.d/www.conf
+RUN sed -i 's/pm.min_spare_servers = .*/pm.min_spare_servers = 20/' /usr/local/etc/php-fpm.d/www.conf
+RUN sed -i 's/pm.max_spare_servers = .*/pm.max_spare_servers = 40/' /usr/local/etc/php-fpm.d/www.conf
+
 RUN apt update && apt install -y \
   unzip libmemcached-dev zlib1g-dev
 
