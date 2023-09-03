@@ -129,24 +129,61 @@ $container->set('helper', function ($c) {
             $options += ['all_comments' => false];
             $all_comments = $options['all_comments'];
 
+            $memcached = new Memcached();
+            $memd_addr_array = explode(':', ini_get('session.save_path'));
+            $memcached->addServer($memd_addr_array[0], $memd_addr_array[1]);
+
             $posts = [];
             foreach ($results as $post) {
-                $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
-                $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
-                if (!$all_comments) {
-                    $query .= ' LIMIT 3';
-                }
 
-                $ps = $this->db()->prepare($query);
-                $ps->execute([$post['id']]);
-                $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($comments as &$comment) {
-                    $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                // $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
+                // 投稿ごとのコメント数をmemcachedから取得
+                $comment_count = $memcached->get("comments.{$post['id']}.count");
+                if ($comment_count === false) {
+                    // Memcachedにキャッシュがない場合はDBから取得
+                    $comment_count = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
+                    // Memcachedにキャッシュを保存
+                    $memcached->set("comments.{$post['id']}.count", $comment_count, 10);
                 }
-                unset($comment);
-                $post['comments'] = array_reverse($comments);
+                $post['comment_count'] = $comment_count;
+
+                // 投稿ごとのコメントをmemcachedから取得
+                $comment_value = $memcached->get("comments.{$post['id']}.{$all_comments}");
+                if ($comment_value === false) {
+                    // Memcachedにキャッシュがない場合はDBから取得
+                    $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
+                    if (!$all_comments) {
+                        $query .= ' LIMIT 3';
+                    }
+                    $ps = $this->db()->prepare($query);
+                    $ps->execute([$post['id']]);
+                    $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($comments as &$comment) {
+                        $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                    }
+                    unset($comment);
+                    $post['comments'] = array_reverse($comments);
+                    // Memcachedにキャッシュを保存
+                    $memcached->set("comments.{$post['id']}.{$all_comments}", $post['comments'], 10);
+                } else {
+                    $post['comments'] = $comment_value;
+                }
+                // $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
+                // if (!$all_comments) {
+                //     $query .= ' LIMIT 3';
+                // }
+
+                // $ps = $this->db()->prepare($query);
+                // $ps->execute([$post['id']]);
+                // $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
+                // foreach ($comments as &$comment) {
+                //     $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                // }
+                // unset($comment);
+                // $post['comments'] = array_reverse($comments);
 
                 //$post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']);
+                //print_r($post);
                 $post['user'] = ['account_name' => $post['account_name']];
 
                 // if ($post['user']['del_flg'] == 0) {
@@ -319,7 +356,8 @@ $app->get('/posts', function (Request $request, Response $response) {
     $params = $request->getQueryParams();
     $max_created_at = $params['max_created_at'] ?? null;
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC');
+    //$ps = $db->prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC');
+    $ps = $db->prepare('SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at`, `users`.`account_name` FROM `posts` INNER JOIN `users` ON `posts`.`user_id` = `users`.`id` WHERE `posts`.`created_at` <= ? ORDER BY `posts`.`created_at` DESC');
     $ps->execute([$max_created_at === null ? null : $max_created_at]);
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results);
@@ -329,7 +367,8 @@ $app->get('/posts', function (Request $request, Response $response) {
 
 $app->get('/posts/{id}', function (Request $request, Response $response, $args) {
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT * FROM `posts` WHERE `id` = ?');
+    //$ps = $db->prepare('SELECT * FROM `posts` WHERE `id` = ?');
+    $ps = $db->prepare('SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at`, `users`.`account_name` FROM `posts` INNER JOIN `users` ON `posts`.`user_id` = `users`.`id` WHERE `posts`.`id` = ?');
     $ps->execute([$args['id']]);
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results, ['all_comments' => true]);
@@ -516,7 +555,8 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
         return $response->withStatus(404);
     }
 
-    $ps = $db->prepare('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC');
+    //$ps = $db->prepare('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC');
+    $ps = $db->prepare('SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`created_at`, `posts`.`mime`, `users`.`account_name` FROM `posts` INNER JOIN `users` ON `posts`.`user_id` = `users`.`id` WHERE `users`.`del_flg` = 0 AND `posts`.`user_id` = ? ORDER BY `posts`.`created_at` DESC');
     $ps->execute([$user['id']]);
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results);
