@@ -133,12 +133,22 @@ $container->set('helper', function ($c) {
             $memd_addr_array = explode(':', ini_get('session.save_path'));
             $memcached->addServer($memd_addr_array[0], $memd_addr_array[1]);
 
+            // "comments.{$post['id']}.count"を配列に格納
+            $count_keys = [];
+            $comment_keys = [];
+            foreach ($results as $post) {
+                $count_keys[] = "comments.{$post['id']}.count";
+                $comment_keys[] = "comments.{$post['id']}.{$all_comments}";
+            }
+            $cached_counts = $memcached->getMulti($count_keys);
+            $cached_comments = $memcached->getMulti($comment_keys);
+
             $posts = [];
             foreach ($results as $post) {
 
                 // $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
                 // 投稿ごとのコメント数をmemcachedから取得
-                $comment_count = $memcached->get("comments.{$post['id']}.count");
+                $comment_count = $cached_counts["comments.{$post['id']}.count"];
                 if ($comment_count === false) {
                     // Memcachedにキャッシュがない場合はDBから取得
                     $comment_count = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
@@ -148,7 +158,7 @@ $container->set('helper', function ($c) {
                 $post['comment_count'] = $comment_count;
 
                 // 投稿ごとのコメントをmemcachedから取得
-                $comment_value = $memcached->get("comments.{$post['id']}.{$all_comments}");
+                $comment_value = $cached_comments["comments.{$post['id']}.{$all_comments}"];
                 if ($comment_value === false) {
                     // Memcachedにキャッシュがない場合はDBから取得
                     $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
