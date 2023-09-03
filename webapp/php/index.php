@@ -160,10 +160,11 @@ $container->set('helper', function ($c) {
                 $post['comment_count'] = $comment_count;
 
                 // 投稿ごとのコメントをmemcachedから取得
-                $comment_value = $cached_comments["comments.{$post['id']}.{$all_comments}"];
-                if ($comment_value === false) {
+                if (isset($cached_comments["comments.{$post['id']}.{$all_comments}"])) {
+                    $post['comments'] = $cached_comments["comments.{$post['id']}.{$all_comments}"];
+                } else {
                     // Memcachedにキャッシュがない場合はDBから取得
-                    $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
+                    $query = 'SELECT `comments`.`comment`, `users`.`account_name` FROM `comments` INNER JOIN `users` ON `comments`.`user_id` = `users`.`id` WHERE `post_id` = ? ORDER BY `comments`.`created_at` DESC';
                     if (!$all_comments) {
                         $query .= ' LIMIT 3';
                     }
@@ -171,14 +172,13 @@ $container->set('helper', function ($c) {
                     $ps->execute([$post['id']]);
                     $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
                     foreach ($comments as &$comment) {
-                        $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                        //$comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                        $comment['user'] = ['account_name' => $comment['account_name']];
                     }
                     unset($comment);
                     $post['comments'] = array_reverse($comments);
                     // Memcachedにキャッシュを保存
                     $memcached->set("comments.{$post['id']}.{$all_comments}", $post['comments'], 10);
-                } else {
-                    $post['comments'] = $comment_value;
                 }
                 // $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
                 // if (!$all_comments) {
