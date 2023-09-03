@@ -148,8 +148,10 @@ $container->set('helper', function ($c) {
 
                 // $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
                 // 投稿ごとのコメント数をmemcachedから取得
-                $comment_count = $cached_counts["comments.{$post['id']}.count"];
-                if ($comment_count === false) {
+                $comment_count = 0;
+                if (isset($cached_counts["comments.{$post['id']}.count"])) {
+                    $comment_count = $cached_counts["comments.{$post['id']}.count"];
+                } else {
                     // Memcachedにキャッシュがない場合はDBから取得
                     $comment_count = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
                     // Memcachedにキャッシュを保存
@@ -566,7 +568,7 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
     }
 
     //$ps = $db->prepare('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC');
-    $ps = $db->prepare('SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`created_at`, `posts`.`mime`, `users`.`account_name` FROM `posts` FORCE INDEX('posts_user_idx') INNER JOIN `users` ON `posts`.`user_id` = `users`.`id` WHERE `users`.`del_flg` = 0 AND `posts`.`user_id` = ? ORDER BY `posts`.`created_at` DESC');
+    $ps = $db->prepare('SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`created_at`, `posts`.`mime`, `users`.`account_name` FROM `posts` FORCE INDEX(`posts_user_idx`) INNER JOIN `users` ON `posts`.`user_id` = `users`.`id` WHERE `users`.`del_flg` = 0 AND `posts`.`user_id` = ? ORDER BY `posts`.`created_at` DESC');
     $ps->execute([$user['id']]);
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results);
