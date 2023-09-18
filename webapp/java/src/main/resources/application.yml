@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:15432/isuconp
+    username: isucon
+    password: isucon
+    hikari:
+      auto-commit: false
