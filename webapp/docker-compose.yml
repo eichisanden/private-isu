@@ -52,7 +52,7 @@ services:
           memory: 1g
 
   pgsql:
-    image: postgres:15
+    image: postgres:16.0
     environment:
       - "TZ=Asia/Tokyo"
       - "POSTGRES_USER=isucon"
